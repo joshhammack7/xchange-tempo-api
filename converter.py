@@ -130,7 +130,12 @@ def convert_xchange_to_tempo(
 
     plays_out.sort(key=lambda p: p["PlayNumber"])
 
-    tempo_obj = {"FileVersion": 1, "Plays": plays_out}
+    tempo_obj = {
+    "FileVersion": 1,
+    "RelativeTo": "ClipFolder",
+    "Plays": plays_out
+}
+
 
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(tempo_obj, f, indent=2)
