@@ -2,8 +2,8 @@ from flask import Flask, request, send_file, jsonify
 from flask_cors import CORS
 import io
 
-
 from converter import convert_xchange_to_tempo_from_bytes
+
 
 app = Flask(__name__)
 CORS(app)  # you can restrict origins later if needed
