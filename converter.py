@@ -1,7 +1,6 @@
 import xml.etree.ElementTree as ET
 import json
 import io
-import os
 from pathlib import Path
 
 
@@ -15,17 +14,21 @@ def convert_xchange_to_tempo_from_bytes(
     """
     Core converter: takes raw XML bytes and returns (output_name, BytesIO) for a .tempo file.
 
-    Design:
-      - Tempo prefers filename-only in "Source" (no absolute paths) so files are portable.
-      - "RelativeTo": "ClipFolder" tells Tempo to resolve filenames using its clip folder
-        / project context, not your local filesystem paths.
+    Option 2 design (Base folder + filename):
+      - The frontend (Base44, local GUI, etc.) is responsible for constructing the
+        full clip path string (e.g. "/Users/josh/Desktop/TempoVideo/25 0528 TXNO O vs ALSO.mp4").
+      - We write that string directly into the Tempo JSON as "Source".
+      - Tempo then uses that path to locate the video.
 
     Parameters:
       xchange_bytes: contents of the .xchange file (bytes)
-      filename: name of the uploaded .xchange file (e.g. "25 0528 TXNO O vs ALSO.xchange")
-      video_source: optional, can be filename ("foo.mp4") or any path; we will keep only
-                    the basename (e.g. "foo.mp4")
+      filename: name of the uploaded .xchange file
+                (e.g. "25 0528 TXNO O vs ALSO.xchange")
+      video_source: full path string or filename, as provided by the caller.
+                    For Option 2, this should be the full path, e.g.:
+                      "/Users/josh/Desktop/TempoVideo/25 0528 TXNO O vs ALSO.mp4"
       playname_prefix: prefix for PlayName; defaults to stem of filename
+                       (e.g. "25 0528 TXNO O vs ALSO")
       fps_override: optional float/str; if not provided we try to read FramesPerSecond
                     from XML; fallback to 59.94
     """
@@ -51,7 +54,7 @@ def convert_xchange_to_tempo_from_bytes(
                 fps = None
 
     if fps is None:
-        # Fallback – adjust if you know your capture is actually 30, 60, etc.
+        # Fallback – adjust if your capture is actually 30, 60, etc.
         fps = 59.94
 
     # --- Playname prefix -----------------------------------------------------
@@ -59,13 +62,15 @@ def convert_xchange_to_tempo_from_bytes(
         playname_prefix = stem
 
     # --- Determine clip path as Tempo will see it ---------------------------
-    # IMPORTANT: Use whatever the user passed as-is (can be a full path or filename).
+    # IMPORTANT:
+    #   For Option 2, the caller (Base44/frontend) sends us the FULL path:
+    #     e.g. "/Users/josh/Desktop/TempoVideo/25 0528 TXNO O vs ALSO.mp4"
+    #   We use it AS-IS in "Source".
     if video_source and video_source.strip():
         clip_path = video_source.strip()
     else:
-        # Fallback: just the stem + .mp4
+        # Fallback: just the stem + .mp4 (still usable if Tempo can resolve it)
         clip_path = f"{stem}.mp4"
-
 
     # --- Locate <Plays> ------------------------------------------------------
     plays_parent = root.find("Plays")
@@ -131,8 +136,7 @@ def convert_xchange_to_tempo_from_bytes(
 
                 views_json.append(
                     {
-                        # IMPORTANT: filename only so Tempo can resolve it
-                        # using ClipFolder / project context.
+                        # Use full path provided by the caller (Option 2)
                         "Source": clip_path,
                         "InPoint": in_point,
                         "OutPoint": out_point,
@@ -157,7 +161,6 @@ def convert_xchange_to_tempo_from_bytes(
         "FileVersion": 1,
         "Plays": plays_out,
     }
-
 
     tempo_bytes = json.dumps(tempo_obj, indent=2).encode("utf-8")
     buf = io.BytesIO(tempo_bytes)
@@ -186,7 +189,7 @@ def convert_xchange_to_tempo(
     with xchange_path.open("rb") as f:
         xchange_bytes = f.read()
 
-    out_name, buf = convert_xchange_to_tempo_from_bytes(
+    _, buf = convert_xchange_to_tempo_from_bytes(
         xchange_bytes=xchange_bytes,
         filename=xchange_path.name,
         video_source=video_source,
