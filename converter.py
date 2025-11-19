@@ -6,11 +6,11 @@ from pathlib import Path
 
 
 def convert_xchange_to_tempo_from_bytes(
-    xchange_bytes: bytes,
-    filename: str,
-    video_source: str | None = None,
-    playname_prefix: str | None = None,
-    fps_override: str | float | None = None,
+    xchange_bytes,
+    filename,
+    video_source=None,
+    playname_prefix=None,
+    fps_override=None,
 ):
     """
     Core converter: takes raw XML bytes and returns (output_name, BytesIO) for a .tempo file.
@@ -34,7 +34,7 @@ def convert_xchange_to_tempo_from_bytes(
     stem = Path(filename).stem  # "25 0528 TXNO O vs ALSO"
 
     # --- FPS handling --------------------------------------------------------
-    fps: float | None = None
+    fps = None
 
     if fps_override is not None:
         try:
@@ -95,7 +95,7 @@ def convert_xchange_to_tempo_from_bytes(
         "TacklerJerseyNum",
     ]
 
-    plays_out: list[dict] = []
+    plays_out = []
 
     # --- Iterate plays -------------------------------------------------------
     for play_elem in plays_parent.findall("Play"):
@@ -110,7 +110,7 @@ def convert_xchange_to_tempo_from_bytes(
             for key in play_keys
         }
 
-        views_json: list[dict] = []
+        views_json = []
         views_elem = play_elem.find("Views")
         if views_elem is not None:
             for view in views_elem.findall("View"):
@@ -169,73 +169,33 @@ def convert_xchange_to_tempo_from_bytes(
 
     out_name = stem + ".tempo"
     return out_name, buf
-        "PassResult",
-        "PenaltyType",
-        "PenaltyYards",
-        "PenaltyJerseyNum",
-        "TacklerJerseyNum",
-    ]
-
-    plays_out = []
-
-    for play_elem in plays_parent.findall("Play"):
-        pn_txt = (play_elem.findtext("PlayNumber", "0") or "").strip()
-        try:
-            pn = int(pn_txt)
-        except ValueError:
-            pn = 0
-
-        playdata = {}
-        for key in play_keys:
-            val = play_elem.findtext(key, "")
-            playdata[key] = (val or "").strip()
-
-        views_json = []
-        views_elem = play_elem.find("Views")
-        if views_elem is not None:
-            for view in views_elem.findall("View"):
-                markin_txt = (view.findtext("MarkIn", "0") or "0").strip()
-                dur_txt = (view.findtext("Duration", "0") or "0").strip()
-                cam = (view.findtext("CameraView", "") or "").strip()
-
-                try:
-                    markin = float(markin_txt)
-                except ValueError:
-                    markin = 0.0
-                try:
-                    duration = float(dur_txt)
-                except ValueError:
-                    duration = 0.0
-
-                in_point = markin / fps
-                out_point = (markin + duration - 1) / fps if duration > 0 else in_point
-
-                views_json.append(
-                    {
-                        "Source": str(video_source),
-                        "InPoint": in_point,
-                        "OutPoint": out_point,
-                        "Camera": cam,
-                    }
-                )
-
-        plays_out.append(
-            {
-                "PlayNumber": pn,
-                "PlayName": f"{playname_prefix}.{pn:03d}",
-                "Views": views_json,
-                "PlayData": playdata,
-            }
-        )
-
-    plays_out.sort(key=lambda p: p["PlayNumber"])
-
-    tempo_obj = {
-    "FileVersion": 1,
-    "RelativeTo": "ClipFolder",
-    "Plays": plays_out
-}
 
 
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(tempo_obj, f, indent=2)
+def convert_xchange_to_tempo(
+    xchange_path,
+    tempo_path,
+    video_source=None,
+    playname_prefix=None,
+    fps_override=None,
+):
+    """
+    Backward-compatible wrapper that works with your original CLI-style function.
+
+    Reads the .xchange file from disk, calls convert_xchange_to_tempo_from_bytes,
+    and writes the resulting .tempo file to tempo_path.
+    """
+    xchange_path = Path(xchange_path)
+    tempo_path = Path(tempo_path)
+
+    with xchange_path.open("rb") as f:
+        xchange_bytes = f.read()
+
+    out_name, buf = convert_xchange_to_tempo_from_bytes(
+        xchange_bytes=xchange_bytes,
+        filename=xchange_path.name,
+        video_source=video_source,
+        playname_prefix=playname_prefix,
+        fps_override=fps_override,
+    )
+
+    tempo_path.write_bytes(buf.getvalue())
