@@ -58,16 +58,14 @@ def convert_xchange_to_tempo_from_bytes(
     if playname_prefix is None or playname_prefix.strip() == "":
         playname_prefix = stem
 
-    # --- Determine clip filename (NO absolute paths) -------------------------
-    # If user passed a video_source, strip it down to basename only.
-    # Example:
-    #   "/Users/josh/Desktop/TempoVideo/25 0528 TXNO O vs ALSO.mp4"
-    #         -> "25 0528 TXNO O vs ALSO.mp4"
-    # If nothing passed, default to "<stem>.mp4".
+    # --- Determine clip path as Tempo will see it ---------------------------
+    # IMPORTANT: Use whatever the user passed as-is (can be a full path or filename).
     if video_source and video_source.strip():
-        clip_filename = os.path.basename(video_source.strip())
+        clip_path = video_source.strip()
     else:
-        clip_filename = f"{stem}.mp4"
+        # Fallback: just the stem + .mp4
+        clip_path = f"{stem}.mp4"
+
 
     # --- Locate <Plays> ------------------------------------------------------
     plays_parent = root.find("Plays")
@@ -135,7 +133,7 @@ def convert_xchange_to_tempo_from_bytes(
                     {
                         # IMPORTANT: filename only so Tempo can resolve it
                         # using ClipFolder / project context.
-                        "Source": clip_filename,
+                        "Source": clip_path,
                         "InPoint": in_point,
                         "OutPoint": out_point,
                         "Camera": cam,
@@ -157,11 +155,9 @@ def convert_xchange_to_tempo_from_bytes(
     # --- Final Tempo JSON object --------------------------------------------
     tempo_obj = {
         "FileVersion": 1,
-        # This tells Tempo to resolve clip filenames relative to its
-        # configured clip folder / project, NOT from your local absolute paths.
-        "RelativeTo": "ClipFolder",
         "Plays": plays_out,
     }
+
 
     tempo_bytes = json.dumps(tempo_obj, indent=2).encode("utf-8")
     buf = io.BytesIO(tempo_bytes)
