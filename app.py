@@ -1,10 +1,9 @@
 from flask import Flask, request, send_file, jsonify
 from flask_cors import CORS
-from pathlib import Path
 import io
-import tempfile
 
-from converter import convert_xchange_to_tempo  # reuse your working logic
+
+from converter import convert_xchange_to_tempo_from_bytes
 
 app = Flask(__name__)
 CORS(app)  # you can restrict origins later if needed
@@ -46,34 +45,26 @@ def convert():
         except ValueError:
             return jsonify({"error": "fps must be numeric"}), 400
 
-    upload_name = Path(file.filename).name
+    try:
+        # Read the uploaded .xchange into memory
+        xchange_bytes = file.read()
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmpdir = Path(tmpdir)
-        xchange_path = tmpdir / upload_name
-        tempo_path = tmpdir / (Path(upload_name).with_suffix(".tempo").name)
+        # Call the new bytes-based converter
+        out_name, buf = convert_xchange_to_tempo_from_bytes(
+            xchange_bytes=xchange_bytes,
+            filename=file.filename,
+            video_source=video_source,
+            playname_prefix=playname_prefix,
+            fps_override=fps_override,
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-        file.save(xchange_path)
-
-        try:
-            convert_xchange_to_tempo(
-                xchange_path,
-                tempo_path,
-                video_source=video_source,
-                playname_prefix=playname_prefix,
-                fps_override=fps_override,
-            )
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-
-        data = tempo_path.read_bytes()
-        buf = io.BytesIO(data)
-        buf.seek(0)
-
+    # buf is already a BytesIO positioned at start from the converter
     return send_file(
         buf,
         as_attachment=True,
-        download_name=tempo_path.name,
+        download_name=out_name,
         mimetype="application/json",
     )
 
